@@ -1,32 +1,63 @@
-# Nexus AutoDL
+# Nexus AutoDL - Wabbajack & Nexus Autoclicker
 
 <p align="center">
   <img alt="Nexus AutoDL" src="https://raw.githubusercontent.com/parsiad/nexus-autodl/master/assets/img/logo.png">
 </p>
 
-When downloading mods from [Nexus Mods](https://nexusmods.com), you have to manually click on a download button every time a new mod is added to the queue.
-Since modlists supported by tools like [Wabbajack](https://www.wabbajack.org) and [Portmod](https://gitlab.com/portmod/portmod) often have tens or hundreds of mods, this can be very time consuming.
-Nexus AutoDL is an autoclicker (a.k.a., autodownloader, bot) that helps automate this process for you.
-Specifically, while Nexus AutoDL is running, any time a [mod](https://raw.githubusercontent.com/parsiad/nexus-autodl/master/assets/mod_download_page.jpg) or [collection](https://raw.githubusercontent.com/parsiad/nexus-autodl/master/assets/vortex_download_page.jpg) download page is visible on your screen, Nexus AutoDL will attempt to click the download button.
+When downloading mods using **Wabbajack** or from **Nexus Mods**, non-premium users are required to manually click the **"Slow download"** button every time a new mod is added to the download queue.
+For large modlists containing hundreds or thousands of mods, clicking this button repeatedly is extremely tedious.
 
-If you like Nexus AutoDL, please leave a star on GitHub to help others find it.
+**Nexus AutoDL** automates this process for you.
 
-## Download
+---
 
-A Windows binary is available on the [releases page](https://github.com/parsiad/nexus-autodl/releases).
-Download it and double-click on it to start Nexus AutoDL.
-Take a screenshot and crop (WIN+S on Windows) the item on the screen you want to click on, placing the result in a directory of your choice.
-Point Nexus AutoDL to this directory and press the **Start** button.
-This spawns a terminal window which you can close when you are done downloading mods.
-You can include multiple images in this directory.
+## Key Features
 
-Users on other platforms can download the source code on GitHub.
+- 🎯 **Fixed Screen Position Mode (Recommended for Wabbajack)**: Set an exact $(X, Y)$ screen coordinate or use the **"Pick Position"** 3-second hover countdown to target the Wabbajack button. Auto-clicks that exact location on a customizable schedule.
+- 🖼️ **Image Matching Mode (OpenCV & PyAutoGUI)**: Automatically detects the "Slow download" button anywhere on screen using bundled high-res template images.
+- 📐 **High-DPI & Multi-Scale Support**: Windows DPI-aware (`SetProcessDpiAwareness`) so clicks land accurately on 100%, 125%, 150%, and 200% scaled displays, with multi-scale OpenCV template matching.
+- 🖱️ **Mouse Return**: Automatically restores your mouse cursor back to where you were working immediately after performing a click.
+- ⏱️ **Randomized Click Interval**: Custom min/max sleep intervals (e.g. 1.5 to 4.0s) to simulate human clicking and prevent rapid spam.
+- 🖥️ **Integrated Live Console & Status**: Single-window modern dark UI with real-time logging, status badges, and template management.
+
+---
+
+## How to Use with Wabbajack
+
+1. Download and launch **Nexus AutoDL**.
+2. Open **Wabbajack** and start downloading your modlist.
+3. When Wabbajack opens the embedded Nexus manual download window:
+   - **Method A (Fixed Position)**: Select *Fixed Screen Position*, click **🎯 Pick Position (3s)**, hover your cursor over the **Slow download** button, and wait 3 seconds for coordinates to capture.
+   - **Method B (Image Matching)**: Select *Image Matching* mode to automatically search your screen for the button using pre-bundled templates in `templates/`.
+4. Click **▶ START AUTOCLICKER**.
+5. Sit back and watch Nexus AutoDL handle the manual download clicks automatically!
+
+---
+
+## Download & Build
+
+### Binary Releases
+Pre-compiled Windows executables are available on the [Releases page](https://github.com/parsiad/nexus-autodl/releases).
+
+### Running from Source
+```bash
+pip install -r requirements.txt
+python nexus_autodl.py
+```
+
+### Compiling to Executable (.exe)
+```bash
+pip install pyinstaller
+make build
+```
+Executable will be placed inside `dist/nexus_autodl.exe`.
+
+---
 
 ## Caution
 
-Using a bot to download from Nexus is in direct violation of their TOS:
+Using automation tools on Nexus Mods may violate their TOS:
+> Attempting to download files or otherwise record data offered through our services in a fashion that drastically exceeds the expected average, through the use of software automation or otherwise, is prohibited without expressed permission.
 
-> Attempting to download files or otherwise record data offered through our services (including but not limited to the Nexus Mods website and the Nexus Mods API) in a fashion that drastically exceeds the expected average, through the use of software automation or otherwise, is prohibited without expressed permission.
-> Users found in violation of this policy will have their account suspended.
+Use at your own risk.
 
-Use this at your own risk.
