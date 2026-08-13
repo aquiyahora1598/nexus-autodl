@@ -39,7 +39,7 @@ For large modlists containing hundreds or thousands of mods, clicking this butto
 ## Download & Build
 
 ### Binary Releases
-Pre-compiled standalone Windows executables are available on the [Releases page](https://github.com/aquiyahora1598/nexus-autodl/releases).
+Pre-compiled standalone Windows executables are available on the [Releases page](https://github.com/aquiyahora1598/nexus-autodl/releases/).
 
 ### Running from Source
 ```bash
