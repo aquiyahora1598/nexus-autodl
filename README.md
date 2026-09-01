@@ -21,6 +21,7 @@ For large modlists containing hundreds or thousands of mods, clicking this butto
 - 📦 **Pre-Bundled Factory Templates**: Comes out-of-the-box with updated default templates (`Slow download.png` and `Standard download.png`) embedded directly inside the application.
 - 📂 **Easy Custom Templates**: Click **"📂 Abrir Carpeta de Plantillas"** to view, add, or customize your own screenshot templates anytime.
 - 📐 **High-DPI & Multi-Scale Support**: Windows DPI-aware (`SetProcessDpiAwareness`) with multi-scale OpenCV template matching so button detection works across different zoom levels and screen resolutions.
+- 🔄 **Smart Navigation & Auto-Recovery (Wabbajack Fix)**: If the download button is not immediately visible on screen, Nexus AutoDL smoothly scrolls down for 5 seconds and up for 5 seconds to locate it. If still not found, it automatically presses `F5` to refresh the page and resume unattended downloading.
 - 🖱️ **Mouse Return**: Automatically restores your mouse cursor back to its previous position after clicking, allowing you to use your PC without cursor disruption.
 - 🖥️ **Modern Single-Window UI**: Clean dark theme with status indicators, speed selection buttons, and a live console log.
 

@@ -66,8 +66,12 @@ class NexusAutoDL:
         self._return_mouse = True
 
         self._running = False
+        self._search_phase = "scan"
+        self._phase_start = 0.0
+        self._last_log_time = 0.0
         self._timer_id: Optional[str] = None
         self._templates: Dict[str, ImageFile] = {}
+        self._cached_scaled_templates: List[Tuple[str, float, Any, int, int]] = []
 
         self._setup_ui()
         self._load_templates()
@@ -302,6 +306,24 @@ class NexusAutoDL:
                         pass
 
         count = len(self._templates)
+        self._cached_scaled_templates.clear()
+
+        if has_cv2:
+            scales = [0.75, 0.85, 0.95, 1.0, 1.05, 1.15, 1.25, 1.35]
+            for path, img in self._templates.items():
+                try:
+                    img_rgb = img.convert("RGB")
+                    template_np = cv2.cvtColor(np.array(img_rgb), cv2.COLOR_BGR2GRAY if self._grayscale else cv2.COLOR_BGR2RGB)
+                    th, tw = template_np.shape[:2]
+                    for scale in scales:
+                        sw, sh = int(tw * scale), int(th * scale)
+                        if sw < 10 or sh < 10:
+                            continue
+                        resized_tmpl = cv2.resize(template_np, (sw, sh), interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC)
+                        self._cached_scaled_templates.append((path, scale, resized_tmpl, sw, sh))
+                except Exception:
+                    pass
+
         self._tmpl_lbl.config(text=f"Plantillas cargadas: {count}")
         self._log(f"Se cargaron {count} plantillas de imagen.")
 
@@ -321,6 +343,9 @@ class NexusAutoDL:
             return
 
         self._running = True
+        self._search_phase = "scan"
+        self._phase_start = time.time()
+        self._last_log_time = 0.0
         self._start_btn.config(text="⏹ DETENER AUTOCLICKER", bg="#ef4444", activebackground="#dc2626")
         self._status_lbl.config(text="● BUSCANDO Y HACIENDO CLIC", fg="#10b981")
         
@@ -330,6 +355,7 @@ class NexusAutoDL:
 
     def _stop(self) -> None:
         self._running = False
+        self._search_phase = "scan"
         if self._timer_id:
             self._root.after_cancel(self._timer_id)
             self._timer_id = None
@@ -348,36 +374,22 @@ class NexusAutoDL:
         screenshot = pyautogui.screenshot()
         screenshot_rgb = screenshot.convert("RGB")
 
-        # OpenCV multi-scale matching if available
-        if has_cv2 and self._multiscale:
-            screenshot_np = cv2.cvtColor(np.array(screenshot_rgb), cv2.COLOR_RGB2BGR)
-            if self._grayscale:
-                screenshot_np = cv2.cvtColor(screenshot_np, cv2.COLOR_BGR2GRAY)
+        # OpenCV multi-scale matching using pre-cached templates
+        if has_cv2 and self._multiscale and self._cached_scaled_templates:
+            screenshot_np = cv2.cvtColor(np.array(screenshot_rgb), cv2.COLOR_BGR2GRAY if self._grayscale else cv2.COLOR_BGR2RGB)
 
-            scales = [0.75, 0.85, 0.95, 1.0, 1.05, 1.15, 1.25, 1.35]
+            for path, scale, resized_tmpl, sw, sh in self._cached_scaled_templates:
+                if sw >= screenshot_np.shape[1] or sh >= screenshot_np.shape[0]:
+                    continue
 
-            for path, img in self._templates.items():
-                img_rgb = img.convert("RGB")
-                template_np = cv2.cvtColor(np.array(img_rgb), cv2.COLOR_RGB2BGR)
-                if self._grayscale:
-                    template_np = cv2.cvtColor(template_np, cv2.COLOR_BGR2GRAY)
+                res = cv2.matchTemplate(screenshot_np, resized_tmpl, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, max_loc = cv2.minMaxLoc(res)
 
-                th, tw = template_np.shape[:2]
-
-                for scale in scales:
-                    sw, sh = int(tw * scale), int(th * scale)
-                    if sw >= screenshot_np.shape[1] or sh >= screenshot_np.shape[0] or sw < 10 or sh < 10:
-                        continue
-
-                    resized_tmpl = cv2.resize(template_np, (sw, sh), interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC)
-                    res = cv2.matchTemplate(screenshot_np, resized_tmpl, cv2.TM_CCOEFF_NORMED)
-                    _, max_val, _, max_loc = cv2.minMaxLoc(res)
-
-                    if max_val >= self._confidence:
-                        match_x = max_loc[0] + sw // 2
-                        match_y = max_loc[1] + sh // 2
-                        self._log(f"¡Botón detectado! {Path(path).name} (conf: {max_val:.2f}, escala: {scale:.2f}x)")
-                        return match_x, match_y
+                if max_val >= self._confidence:
+                    match_x = max_loc[0] + sw // 2
+                    match_y = max_loc[1] + sh // 2
+                    self._log(f"¡Botón detectado! {Path(path).name} (conf: {max_val:.2f}, escala: {scale:.2f}x)")
+                    return match_x, match_y
             return None
 
         # Standard PyAutoGUI matching fallback
@@ -403,19 +415,66 @@ class NexusAutoDL:
         if not self._running:
             return
 
+        loop_start = time.time()
+        sleep_time = 0.11
+
         try:
             pos = self._match_image()
             if pos:
+                self._search_phase = "scan"
+                self._phase_start = time.time()
                 self._perform_click(pos[0], pos[1])
+                min_s, max_s, _ = self._speed_presets[self._selected_speed.get()]
+                sleep_time = random.uniform(min_s, max_s)
+                self._log(f"Esperando {sleep_time:.1f} segundos para la siguiente descarga...")
             else:
-                self._log("Escaneando pantalla... Esperando botón de descarga.")
+                now = time.time()
+
+                if self._search_phase == "scan":
+                    if now - self._phase_start < 0.5:
+                        if now - self._last_log_time >= 0.5:
+                            self._log("Escaneando pantalla... Esperando botón de descarga.")
+                            self._last_log_time = now
+                    else:
+                        self._search_phase = "scroll_down"
+                        self._phase_start = now
+                        self._log("Botón no visible. Desplazando hacia abajo (5 segundos)...")
+
+                elif self._search_phase == "scroll_down":
+                    elapsed = now - self._phase_start
+                    if elapsed < 5.0:
+                        pyautogui.scroll(-225)
+                        if now - self._last_log_time >= 0.8:
+                            remaining = max(0.0, 5.0 - elapsed)
+                            self._log(f"Buscando... Desplazando abajo ({remaining:.1f}s restantes)...")
+                            self._last_log_time = now
+                    else:
+                        self._search_phase = "scroll_up"
+                        self._phase_start = now
+                        self._log("Cambiando dirección: Desplazando hacia arriba (5 segundos)...")
+
+                elif self._search_phase == "scroll_up":
+                    elapsed = now - self._phase_start
+                    if elapsed < 5.0:
+                        pyautogui.scroll(225)
+                        if now - self._last_log_time >= 0.8:
+                            remaining = max(0.0, 5.0 - elapsed)
+                            self._log(f"Buscando... Desplazando arriba ({remaining:.1f}s restantes)...")
+                            self._last_log_time = now
+                    else:
+                        self._log("Botón no encontrado tras 5s abajo y 5s arriba. Recargando página (F5)...", level="click")
+                        pyautogui.press("f5")
+                        self._search_phase = "scan"
+                        self._phase_start = now
+                        sleep_time = 3.5
+
+                if sleep_time == 0.11:
+                    work_time = time.time() - loop_start
+                    sleep_time = max(0.01, 0.11 - work_time)
+
         except Exception as e:
             self._log(f"Error durante el escaneo: {e}", level="fatal")
 
-        min_s, max_s, _ = self._speed_presets[self._selected_speed.get()]
-        sleep_time = random.uniform(min_s, max_s)
-
-        self._log(f"Esperando {sleep_time:.1f} segundos...")
         self._timer_id = self._root.after(int(sleep_time * 1000), self._loop)
 
 
