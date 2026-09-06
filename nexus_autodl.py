@@ -490,12 +490,25 @@ class NexusAutoDL:
         try:
             pos = self._match_image()
             if pos:
+                was_scrolling = self._search_phase in ("scroll_down", "scroll_up")
                 self._search_phase = "scan"
                 self._phase_start = time.time()
-                self._perform_click(pos[0], pos[1])
-                min_s, max_s, _ = self._speed_presets[self._selected_speed.get()]
-                sleep_time = random.uniform(min_s, max_s)
-                self._log(f"Esperando {sleep_time:.1f} segundos para la siguiente descarga...")
+
+                if was_scrolling:
+                    # The page was in motion! Wait for browser smooth-scroll inertia to completely settle
+                    time.sleep(0.35)
+                    # Re-detect the exact stationary coordinates of the button on the settled page
+                    stationary_pos = self._match_image()
+                    if stationary_pos:
+                        pos = stationary_pos
+                    else:
+                        pos = None
+
+                if pos:
+                    self._perform_click(pos[0], pos[1])
+                    min_s, max_s, _ = self._speed_presets[self._selected_speed.get()]
+                    sleep_time = random.uniform(min_s, max_s)
+                    self._log(f"Esperando {sleep_time:.1f} segundos para la siguiente descarga...")
             else:
                 now = time.time()
 
