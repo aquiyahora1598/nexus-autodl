@@ -47,7 +47,7 @@ class NexusAutoDL:
     def __init__(self, root: tk.Tk) -> None:
         self._root = root
         self._root.title("Nexus AutoDL - Autoclicker Wabbajack")
-        self._root.geometry("520x580")
+        self._root.geometry("520x640")
         self._root.resizable(False, False)
         self._root.configure(bg="#111827")  # Slate Dark
 
@@ -59,8 +59,9 @@ class NexusAutoDL:
         }
         self._selected_speed = tk.StringVar(value="normal")  # Default to Normal
 
-        # Fixed internal options (hidden from UI for maximum simplicity)
-        self._confidence = 0.85  # 85% similarity threshold (prevents false positives on other words/boxes)
+        # Configurable Confidence (default 75% - balanced to detect button without false words)
+        self._confidence = 0.75
+        self._confidence_var = tk.IntVar(value=75)
         self._grayscale = True
         self._multiscale = True
         self._return_mouse = True
@@ -71,7 +72,7 @@ class NexusAutoDL:
         self._last_log_time = 0.0
         self._timer_id: Optional[str] = None
         self._templates: Dict[str, ImageFile] = {}
-        self._cached_scaled_templates: List[Tuple[str, float, Any, int, int, float, float]] = []
+        self._cached_scaled_templates: List[Tuple[str, float, Any, int, int]] = []
 
         self._setup_ui()
         self._load_templates()
@@ -159,6 +160,47 @@ class NexusAutoDL:
             self._speed_btns[key] = btn
 
         self._update_speed_buttons_ui()
+
+        # Similarity / Confidence Card
+        sim_card = tk.Frame(main_container, bg="#1f2937", padx=15, pady=10)
+        sim_card.pack(fill="x", pady=(0, 15))
+
+        sim_header = tk.Frame(sim_card, bg="#1f2937")
+        sim_header.pack(fill="x")
+
+        tk.Label(
+            sim_header,
+            text="SIMILITUD DE IMAGEN (PRECISIÓN)",
+            font=("Segoe UI", 9, "bold"),
+            fg="#f9fafb",
+            bg="#1f2937"
+        ).pack(side="left")
+
+        self._sim_val_lbl = tk.Label(
+            sim_header,
+            text="75% (Recomendado)",
+            font=("Segoe UI", 9, "bold"),
+            fg="#10b981",
+            bg="#1f2937"
+        )
+        self._sim_val_lbl.pack(side="right")
+
+        self._sim_scale = tk.Scale(
+            sim_card,
+            from_=60,
+            to_=95,
+            orient="horizontal",
+            variable=self._confidence_var,
+            command=self._on_confidence_change,
+            bg="#1f2937",
+            fg="#9ca3af",
+            troughcolor="#374151",
+            activebackground="#10b981",
+            highlightthickness=0,
+            bd=0,
+            showvalue=False
+        )
+        self._sim_scale.pack(fill="x", pady=(6, 0))
 
         # Action Button (Start / Stop)
         self._start_btn = tk.Button(
@@ -250,6 +292,24 @@ class NexusAutoDL:
             else:
                 btn.config(bg="#374151", fg="#9ca3af", font=("Segoe UI", 9))
 
+    def _on_confidence_change(self, val: str) -> None:
+        pct = int(val)
+        self._confidence = pct / 100.0
+        if pct >= 85:
+            desc = "Muy alta"
+            color = "#3b82f6"
+        elif pct >= 72:
+            desc = "Recomendado"
+            color = "#10b981"
+        else:
+            desc = "Permisivo"
+            color = "#f59e0b"
+        if hasattr(self, "_sim_val_lbl"):
+            self._sim_val_lbl.config(text=f"{pct}% ({desc})", fg=color)
+        if hasattr(self, "_tmpl_lbl"):
+            count = len(self._templates)
+            self._tmpl_lbl.config(text=f"Plantillas cargadas: {count} | Similitud: {pct}%")
+
     def _log(self, message: str, level: str = "info") -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
         self._log_text.insert("end", f"[{timestamp}] ", "timestamp")
@@ -309,7 +369,7 @@ class NexusAutoDL:
         self._cached_scaled_templates.clear()
 
         if has_cv2:
-            scales = [0.75, 0.85, 0.95, 1.0, 1.05, 1.15, 1.25, 1.35]
+            scales = [0.75, 0.85, 0.90, 0.95, 1.0, 1.05, 1.10, 1.15, 1.20, 1.25, 1.35]
             for path, img in self._templates.items():
                 try:
                     img_rgb = img.convert("RGB")
@@ -320,16 +380,13 @@ class NexusAutoDL:
                         if sw < 10 or sh < 10:
                             continue
                         resized_tmpl = cv2.resize(template_np, (sw, sh), interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC)
-                        _, std_t = cv2.meanStdDev(resized_tmpl)
-                        max_t = float(resized_tmpl.max())
-                        min_std = float(std_t[0][0]) * 0.70
-                        min_max_val = max_t * 0.75
-                        self._cached_scaled_templates.append((path, scale, resized_tmpl, sw, sh, min_std, min_max_val))
+                        self._cached_scaled_templates.append((path, scale, resized_tmpl, sw, sh))
                 except Exception:
                     pass
 
-        self._tmpl_lbl.config(text=f"Plantillas cargadas: {count} | Similitud: 85%")
-        self._log(f"Se cargaron {count} plantillas de imagen (Similitud requerida: 85%).")
+        pct = int(self._confidence * 100)
+        self._tmpl_lbl.config(text=f"Plantillas cargadas: {count} | Similitud: {pct}%")
+        self._log(f"Se cargaron {count} plantillas de imagen (Similitud: {pct}%).")
 
     def _toggle_running(self) -> None:
         if self._running:
@@ -382,7 +439,7 @@ class NexusAutoDL:
         if has_cv2 and self._multiscale and self._cached_scaled_templates:
             screenshot_np = cv2.cvtColor(np.array(screenshot_rgb), cv2.COLOR_BGR2GRAY if self._grayscale else cv2.COLOR_BGR2RGB)
 
-            for path, scale, resized_tmpl, sw, sh, min_std, min_max_val in self._cached_scaled_templates:
+            for path, scale, resized_tmpl, sw, sh in self._cached_scaled_templates:
                 if sw >= screenshot_np.shape[1] or sh >= screenshot_np.shape[0]:
                     continue
 
@@ -390,13 +447,12 @@ class NexusAutoDL:
                 _, max_val, _, max_loc = cv2.minMaxLoc(res)
 
                 if max_val >= self._confidence:
-                    # Check for shaded/dimmed background or disabled button
+                    # Check for shaded/dimmed background (under modal or darkened overlay)
                     matched_crop = screenshot_np[max_loc[1]:max_loc[1] + sh, max_loc[0]:max_loc[0] + sw]
-                    _, std_m = cv2.meanStdDev(matched_crop)
                     max_m = float(matched_crop.max())
 
-                    if std_m[0][0] < min_std or max_m < min_max_val:
-                        # Shaded/dimmed in background, ignore!
+                    if max_m < 110:
+                        # Text is too dark/dimmed (shaded in background), ignore!
                         continue
 
                     match_x = max_loc[0] + sw // 2
