@@ -60,7 +60,7 @@ class NexusAutoDL:
         self._selected_speed = tk.StringVar(value="normal")  # Default to Normal
 
         # Fixed internal options (hidden from UI for maximum simplicity)
-        self._confidence = 0.65
+        self._confidence = 0.85  # 85% similarity threshold (prevents false positives on other words/boxes)
         self._grayscale = True
         self._multiscale = True
         self._return_mouse = True
@@ -71,7 +71,7 @@ class NexusAutoDL:
         self._last_log_time = 0.0
         self._timer_id: Optional[str] = None
         self._templates: Dict[str, ImageFile] = {}
-        self._cached_scaled_templates: List[Tuple[str, float, Any, int, int]] = []
+        self._cached_scaled_templates: List[Tuple[str, float, Any, int, int, float, float]] = []
 
         self._setup_ui()
         self._load_templates()
@@ -320,12 +320,16 @@ class NexusAutoDL:
                         if sw < 10 or sh < 10:
                             continue
                         resized_tmpl = cv2.resize(template_np, (sw, sh), interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC)
-                        self._cached_scaled_templates.append((path, scale, resized_tmpl, sw, sh))
+                        _, std_t = cv2.meanStdDev(resized_tmpl)
+                        max_t = float(resized_tmpl.max())
+                        min_std = float(std_t[0][0]) * 0.70
+                        min_max_val = max_t * 0.75
+                        self._cached_scaled_templates.append((path, scale, resized_tmpl, sw, sh, min_std, min_max_val))
                 except Exception:
                     pass
 
-        self._tmpl_lbl.config(text=f"Plantillas cargadas: {count}")
-        self._log(f"Se cargaron {count} plantillas de imagen.")
+        self._tmpl_lbl.config(text=f"Plantillas cargadas: {count} | Similitud: 85%")
+        self._log(f"Se cargaron {count} plantillas de imagen (Similitud requerida: 85%).")
 
     def _toggle_running(self) -> None:
         if self._running:
@@ -378,7 +382,7 @@ class NexusAutoDL:
         if has_cv2 and self._multiscale and self._cached_scaled_templates:
             screenshot_np = cv2.cvtColor(np.array(screenshot_rgb), cv2.COLOR_BGR2GRAY if self._grayscale else cv2.COLOR_BGR2RGB)
 
-            for path, scale, resized_tmpl, sw, sh in self._cached_scaled_templates:
+            for path, scale, resized_tmpl, sw, sh, min_std, min_max_val in self._cached_scaled_templates:
                 if sw >= screenshot_np.shape[1] or sh >= screenshot_np.shape[0]:
                     continue
 
@@ -386,9 +390,18 @@ class NexusAutoDL:
                 _, max_val, _, max_loc = cv2.minMaxLoc(res)
 
                 if max_val >= self._confidence:
+                    # Check for shaded/dimmed background or disabled button
+                    matched_crop = screenshot_np[max_loc[1]:max_loc[1] + sh, max_loc[0]:max_loc[0] + sw]
+                    _, std_m = cv2.meanStdDev(matched_crop)
+                    max_m = float(matched_crop.max())
+
+                    if std_m[0][0] < min_std or max_m < min_max_val:
+                        # Shaded/dimmed in background, ignore!
+                        continue
+
                     match_x = max_loc[0] + sw // 2
                     match_y = max_loc[1] + sh // 2
-                    self._log(f"¡Botón detectado! {Path(path).name} (conf: {max_val:.2f}, escala: {scale:.2f}x)")
+                    self._log(f"¡Botón detectado! {Path(path).name} (conf: {max_val*100:.1f}%, escala: {scale:.2f}x)")
                     return match_x, match_y
             return None
 
